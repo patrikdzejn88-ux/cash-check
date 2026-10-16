@@ -3,6 +3,10 @@ import 'package:sqflite/sqflite.dart';
 
 import 'models.dart';
 
+/// Сколько календарных месяцев держим в истории, включая текущий.
+/// В июне это январь—июнь, в июле окно само сдвинется на февраль—июль.
+const int kHistoryMonths = 6;
+
 /// Всё локально: SQLite в приватной папке приложения. Сети нет вообще.
 class WalletRepository {
   static const _balanceKey = 'balance';
@@ -12,17 +16,19 @@ class WalletRepository {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'cash_check.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             amount REAL NOT NULL,
             title TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT 'other',
             created_at INTEGER NOT NULL
           )
         ''');
-        await db.execute('CREATE INDEX idx_expenses_date ON expenses(created_at DESC)');
+        await db.execute(
+            'CREATE INDEX idx_expenses_date ON expenses(created_at DESC)');
         await db.execute('''
           CREATE TABLE meta (
             key TEXT PRIMARY KEY,
@@ -31,6 +37,27 @@ class WalletRepository {
         ''');
         await db.insert('meta', {'key': _balanceKey, 'value': '0'});
       },
+      onUpgrade: (db, from, to) async {
+        if (from < 2) {
+          await db.execute(
+            "ALTER TABLE expenses ADD COLUMN category TEXT NOT NULL DEFAULT 'other'",
+          );
+        }
+      },
+    );
+    await pruneOldExpenses();
+  }
+
+  /// Удаляет всё старше окна в [kHistoryMonths] месяцев.
+  /// Баланс при этом не трогаем: эти деньги давно потрачены,
+  /// возвращать их при чистке архива было бы неверно.
+  Future<int> pruneOldExpenses() async {
+    final now = DateTime.now();
+    final cutoff = DateTime(now.year, now.month - (kHistoryMonths - 1), 1);
+    return _db.delete(
+      'expenses',
+      where: 'created_at < ?',
+      whereArgs: [cutoff.millisecondsSinceEpoch],
     );
   }
 
@@ -67,28 +94,23 @@ class WalletRepository {
     return saved;
   }
 
-  Future<void> deleteExpense(Expense expense) async {
-    if (expense.id == null) return;
+  /// Отмена траты. Возвращает false, если окно в 5 минут уже закрылось —
+  /// проверка здесь, а не только в UI, чтобы её нельзя было обойти гонкой.
+  Future<bool> deleteExpense(Expense expense) async {
+    if (expense.id == null || !expense.isDeletable()) return false;
     await _db.transaction((txn) async {
       await txn.delete('expenses', where: 'id = ?', whereArgs: [expense.id]);
       await _adjustBalance(txn, expense.amount); // возврат на баланс
     });
-  }
-
-  Future<void> updateExpense(Expense before, Expense after) async {
-    if (before.id == null) return;
-    await _db.transaction((txn) async {
-      await txn.update('expenses', after.toMap(),
-          where: 'id = ?', whereArgs: [before.id]);
-      await _adjustBalance(txn, before.amount - after.amount);
-    });
+    return true;
   }
 
   Future<void> _adjustBalance(DatabaseExecutor txn, double delta) async {
     final rows = await txn.query('meta',
         where: 'key = ?', whereArgs: [_balanceKey], limit: 1);
-    final current =
-        rows.isEmpty ? 0.0 : double.tryParse(rows.first['value'] as String) ?? 0;
+    final current = rows.isEmpty
+        ? 0.0
+        : double.tryParse(rows.first['value'] as String) ?? 0;
     await txn.insert(
       'meta',
       {'key': _balanceKey, 'value': (current + delta).toString()},

@@ -11,18 +11,29 @@ class ExpenseTile extends StatelessWidget {
     super.key,
     required this.expense,
     required this.onDelete,
-    this.onTap,
   });
 
   final Expense expense;
-  final VoidCallback onDelete;
-  final VoidCallback? onTap;
+
+  /// Возвращает false, если окно отмены успело закрыться между
+  /// жестом и записью — тогда плитка не исчезает.
+  final Future<bool> Function() onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final deletable = expense.isDeletable();
+
     return Dismissible(
       key: ValueKey<int?>(expense.id),
-      direction: DismissDirection.endToStart,
+      direction:
+          deletable ? DismissDirection.endToStart : DismissDirection.none,
+      confirmDismiss: (_) async {
+        if (!expense.isDeletable()) {
+          _showWindowClosed(context);
+          return false;
+        }
+        return onDelete();
+      },
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 22),
@@ -31,14 +42,13 @@ class ExpenseTile extends StatelessWidget {
           color: AppColors.negative.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_outline_rounded,
+        child: const Icon(Icons.undo_rounded,
             color: AppColors.negative, size: 22),
       ),
-      onDismissed: (_) => onDelete(),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: deletable ? null : () => _showWindowClosed(context),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 4),
@@ -51,8 +61,8 @@ class ExpenseTile extends StatelessWidget {
                     color: AppColors.surfaceHigh,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.arrow_outward_rounded,
-                      size: 17, color: AppColors.textMuted),
+                  child: Icon(expense.category.icon,
+                      size: 18, color: AppColors.textMuted),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -60,29 +70,42 @@ class ExpenseTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        expense.title.isEmpty ? 'Без названия' : expense.title,
+                        expense.category.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: expense.title.isEmpty
-                              ? AppColors.textFaint
-                              : AppColors.text,
+                          color: AppColors.text,
                         ),
                       ),
                       const SizedBox(height: 3),
-                      Text(
-                        _time(expense.createdAt),
-                        style: const TextStyle(
-                            fontSize: 12.5, color: AppColors.textFaint),
+                      Row(
+                        children: [
+                          Text(
+                            _time(expense.createdAt),
+                            style: const TextStyle(
+                                fontSize: 12.5, color: AppColors.textFaint),
+                          ),
+                          if (deletable) ...[
+                            const SizedBox(width: 7),
+                            Text(
+                              '· отмена ${_minutesLeft(expense)} мин',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '\u2212${formatMoney(expense.amount)}',
+                  '−${formatMoney(expense.amount)}',
                   style: const TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.w600,
@@ -98,6 +121,34 @@ class ExpenseTile extends StatelessWidget {
     );
   }
 
+  int _minutesLeft(Expense e) {
+    // Без clamp: его статический тип — num, а здесь нужен строго int.
+    final minutes = (e.remainingDeleteWindow().inSeconds / 60).ceil();
+    if (minutes < 1) return 1;
+    if (minutes > kDeleteWindow.inMinutes) return kDeleteWindow.inMinutes;
+    return minutes;
+  }
+
+  void _showWindowClosed(BuildContext context) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.surfaceHigh,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: Text(
+            'Отменить трату можно только в первые '
+            '${kDeleteWindow.inMinutes} минут после записи',
+            style: const TextStyle(fontSize: 13.5, color: AppColors.text),
+          ),
+        ),
+      );
+  }
+
   String _time(DateTime d) {
     final now = DateTime.now();
     final sameDay =
@@ -111,6 +162,7 @@ class ExpenseTile extends StatelessWidget {
         d.day == yesterday.day) {
       return 'Вчера, $hh:$mm';
     }
-    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}, $hh:$mm';
+    return '${d.day.toString().padLeft(2, '0')}.'
+        '${d.month.toString().padLeft(2, '0')}, $hh:$mm';
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/models.dart';
+import '../data/wallet_repository.dart';
 import '../state/wallet_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/money.dart';
@@ -27,8 +28,9 @@ class HistoryScreen extends StatelessWidget {
             )
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
-              itemCount: groups.length,
+              itemCount: groups.length + 1,
               itemBuilder: (_, i) {
+                if (i == groups.length) return const _RetentionNote();
                 final group = groups[i];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,6 +103,26 @@ class HistoryScreen extends StatelessWidget {
     }
     final label = '${d.day} ${_months[d.month - 1]}';
     return d.year == now.year ? label : '$label ${d.year}';
+  }
+}
+
+class _RetentionNote extends StatelessWidget {
+  const _RetentionNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(4, 28, 4, 8),
+      child: Text(
+        'История хранится за последние $kHistoryMonths месяцев. '
+        'Записи старше удаляются автоматически — баланс при этом не меняется.',
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.5,
+          color: AppColors.textFaint,
+        ),
+      ),
+    );
   }
 }
 

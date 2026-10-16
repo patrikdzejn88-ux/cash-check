@@ -10,9 +10,19 @@ workflows:
       - name: Сгенерировать платформенные файлы Android
         script: |
           flutter create --platforms=android --project-name cash_check --org com.lunario .
+      - name: Название приложения без подчёркивания
+        script: |
+          # pubspec обязан быть snake_case по требованию Dart,
+          # поэтому видимое имя правим прямо в манифесте
+          perl -pi -e 's/android:label="cash_check"/android:label="Cash Check"/' \
+            android/app/src/main/AndroidManifest.xml
+          grep android:label android/app/src/main/AndroidManifest.xml
       - name: Установить зависимости
         script: |
           flutter pub get
+      - name: Сгенерировать иконки
+        script: |
+          dart run flutter_launcher_icons
       - name: Анализ кода
         script: |
           flutter analyze || true

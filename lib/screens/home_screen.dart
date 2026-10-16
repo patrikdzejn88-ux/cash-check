@@ -37,11 +37,14 @@ class HomeScreen extends StatelessWidget {
       builder: (_) => const AmountSheet(
         title: 'Новая трата',
         actionLabel: 'Списать',
-        withNote: true,
+        withCategory: true,
       ),
     );
     if (result != null) {
-      await state.addExpense(amount: result.amount, title: result.note);
+      await state.addExpense(
+        amount: result.amount,
+        categoryId: result.categoryId,
+      );
     }
   }
 

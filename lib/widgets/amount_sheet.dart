@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/categories.dart';
 import '../theme/app_theme.dart';
 import '../utils/money.dart';
 
@@ -10,25 +11,23 @@ class AmountSheet extends StatefulWidget {
     super.key,
     required this.title,
     required this.actionLabel,
-    this.withNote = false,
+    this.withCategory = false,
     this.initialAmount,
-    this.initialNote,
   });
 
   final String title;
   final String actionLabel;
-  final bool withNote;
+  final bool withCategory;
   final double? initialAmount;
-  final String? initialNote;
 
   @override
   State<AmountSheet> createState() => _AmountSheetState();
 }
 
 class AmountSheetResult {
-  const AmountSheetResult(this.amount, this.note);
+  const AmountSheetResult(this.amount, this.categoryId);
   final double amount;
-  final String note;
+  final String categoryId;
 }
 
 class _AmountSheetState extends State<AmountSheet> {
@@ -36,16 +35,14 @@ class _AmountSheetState extends State<AmountSheet> {
     text: widget.initialAmount == null
         ? ''
         : formatMoney(widget.initialAmount!, withSuffix: false)
-            .replaceAll('\u2009', ''),
+            .replaceAll(' ', ''),
   );
-  late final TextEditingController _note =
-      TextEditingController(text: widget.initialNote ?? '');
+  String _categoryId = kCategories.first.id;
   String? _error;
 
   @override
   void dispose() {
     _amount.dispose();
-    _note.dispose();
     super.dispose();
   }
 
@@ -60,7 +57,7 @@ class _AmountSheetState extends State<AmountSheet> {
       return;
     }
     HapticFeedback.mediumImpact();
-    Navigator.of(context).pop(AmountSheetResult(value, _note.text.trim()));
+    Navigator.of(context).pop(AmountSheetResult(value, _categoryId));
   }
 
   @override
@@ -145,29 +142,41 @@ class _AmountSheetState extends State<AmountSheet> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 8),
-                Text(_error!,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.negative)),
+                Text(
+                  _error!,
+                  style:
+                      const TextStyle(fontSize: 13, color: AppColors.negative),
+                ),
               ],
-              if (widget.withNote) ...[
-                const SizedBox(height: 18),
-                TextField(
-                  controller: _note,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(fontSize: 15, color: AppColors.text),
-                  decoration: InputDecoration(
-                    hintText: 'На что потратил',
-                    hintStyle: const TextStyle(color: AppColors.textFaint),
-                    filled: true,
-                    fillColor: AppColors.surfaceHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 15),
+              if (widget.withCategory) ...[
+                const SizedBox(height: 22),
+                const Text(
+                  'КАТЕГОРИЯ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textFaint,
                   ),
-                  onSubmitted: (_) => _submit(),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final category in kCategories) ...[
+                      Expanded(
+                        child: _CategoryChip(
+                          category: category,
+                          selected: category.id == _categoryId,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _categoryId = category.id);
+                          },
+                        ),
+                      ),
+                      if (category != kCategories.last)
+                        const SizedBox(width: 10),
+                    ],
+                  ],
                 ),
               ],
               const SizedBox(height: 22),
@@ -183,12 +192,68 @@ class _AmountSheetState extends State<AmountSheet> {
                 ),
                 child: Text(
                   widget.actionLabel,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
+                  style:
+                      const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.category,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ExpenseCategory category;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent.withValues(alpha: 0.13)
+              : AppColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.accent : Colors.transparent,
+            width: 1.4,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              category.icon,
+              size: 21,
+              color: selected ? AppColors.accent : AppColors.textMuted,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              category.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: selected ? AppColors.accent : AppColors.textMuted,
+              ),
+            ),
+          ],
         ),
       ),
     );
